@@ -1,8 +1,10 @@
 import Layout from "@/components/Layout";
+import Spinner from "@/components/Spinner";
 import axios from "axios";
 import { useState, useEffect } from "react";
 import { BiTrash } from "react-icons/bi";
-import { TbEdit } from "react-icons/tb";
+import { FiUpload } from "react-icons/fi";
+import { TiEdit } from "react-icons/ti"; // Corrected import statement
 import { withSwal } from "react-sweetalert2";
 
 function Categories({ swal }) {
@@ -10,6 +12,8 @@ function Categories({ swal }) {
   const [name, setName] = useState("");
   const [categories, setCategories] = useState([]);
   const [parentCategory, setParentCategory] = useState("");
+  const [image, setImage] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [properties, setProperties] = useState([]);
 
   useEffect(() => {
@@ -26,10 +30,18 @@ function Categories({ swal }) {
     setEditedCategory(category);
     setName(category.name);
     setParentCategory(category.parent?._id);
-    setProperties(category.properties.map(({name, values}) => ({
-      name, 
-      values: values.join(',')
-    })))
+    // Check if image property exists before accessing it
+    if (category.image) {
+      setImage(category.image);
+    } else {
+      setImage([]); // Set to empty array if no image
+    }
+    setProperties(
+      category.properties.map(({ name, values }) => ({
+        name,
+        values: values.join(","),
+      }))
+    );
   }
 
   function deleteCategory(category) {
@@ -60,7 +72,7 @@ function Categories({ swal }) {
   }
 
   function handlePropertyNameChange(index, property, newName) {
-    setProperties(prev => {
+    setProperties((prev) => {
       const properties = [...prev];
       properties[index].name = newName;
       return properties;
@@ -68,7 +80,7 @@ function Categories({ swal }) {
   }
 
   function handlePropertyValuesChange(index, property, newValues) {
-    setProperties(prev => {
+    setProperties((prev) => {
       const properties = [...prev];
       properties[index].values = newValues;
       return properties;
@@ -77,31 +89,57 @@ function Categories({ swal }) {
 
   function removeProperty(indexToRemove) {
     setProperties((prev) => {
-      return [...prev].filter((p, pIndex) => {
-        return pIndex != indexToRemove;
+      return prev.filter((p, pIndex) => {
+        return pIndex !== indexToRemove;
       });
-      return newProperties;
     });
   }
 
-  async function saveCategory(ev) {
+  const handleImageUpload = async (ev) => {
+    const files = ev.target?.files;
+    if (files?.length > 0) {
+      setIsUploading(true);
+      const data = new FormData();
+      for (const file of files) {
+        data.append("file", file);
+      }
+
+      try {
+        const res = await axios.post("/api/upload", data);
+        setImage((oldImages) => [...oldImages, ...res.data.links]);
+      } catch (error) {
+        console.error("Error uploading images:", error);
+      }
+
+      setIsUploading(false);
+    }
+  };
+
+  const saveCategory = async (ev) => {
     ev.preventDefault();
-    const data = { name, parentCategory, properties: properties.map(p => ({
-      name:p.name,
-      values: p.values.split(','),
-    })), };
+    const data = {
+      name,
+      parentCategory,
+      image,
+      properties: properties.map((p) => ({
+        name: p.name,
+        values: p.values.split(","),
+      })),
+    };
     if (editedCategory) {
-      data._id = editedCategory;
+      data._id = editedCategory._id; // Check if editedCategory exists before accessing its properties
       await axios.put("/api/categories", { ...data, _id: editedCategory._id });
       setEditedCategory(null);
     } else {
       await axios.post("/api/categories", data);
     }
     setName("");
-    setParentCategory('');
-    setProperties([])
+    setParentCategory("");
+    setProperties([]);
+    setImage([]);
     fetchCategories();
-  }
+  };
+
   return (
     <Layout>
       <h1>Categories</h1>
@@ -121,16 +159,50 @@ function Categories({ swal }) {
           />
           <select
             className=""
-            onChange={ev => setParentCategory(ev.target.value)}
+            onChange={(ev) => setParentCategory(ev.target.value)}
             value={parentCategory}
           >
             <option value="">No parent Category</option>
             {categories.length > 0 &&
-              categories.map(category => (
-                <option key={category._id} value={category._id}>{category.name}</option>
+              categories.map((category) => (
+                <option key={category._id} value={category._id}>
+                  {category.name}
+                </option>
               ))}
           </select>
         </div>
+
+        <div>
+          <label>Photos</label>
+          {image.length > 0 &&
+            image.map((link) => (
+              <div
+                key={link}
+                className="h-24 w-fit bg-white p-4 shadow-md rounded-lg border border-gray-200 mb-6"
+              >
+                <img src={link} alt={link} className="rounded-lg" />
+              </div>
+            ))}
+        </div>
+
+        {isUploading && (
+          <div className="h-24 flex items-center">
+            <Spinner />
+          </div>
+        )}
+        <label className="w-24 h-24 md:w-32 flex justify-center items-center font-medium text-gray-800 rounded-lg cursor-pointer bg-white shadow-md border border-blue-600">
+          <span>
+            <FiUpload />
+          </span>
+          <div>Upload</div>
+          <input
+            type="file"
+            name="file"
+            onChange={handleImageUpload}
+            multiple
+            className="hidden"
+          />
+        </label>
         <div className="">
           <label className="block">Properties</label>
           <button
@@ -145,7 +217,7 @@ function Categories({ swal }) {
               <div key={index} className="flex gap-1 mb-2">
                 <input
                   type="text"
-                  onChange={ev =>
+                  onChange={(ev) =>
                     handlePropertyNameChange(index, property, ev.target.value)
                   }
                   value={property.name}
@@ -154,11 +226,15 @@ function Categories({ swal }) {
                 />
                 <input
                   type="text"
-                  onChange={ev =>
-                    handlePropertyValuesChange(index, property, ev.target.value)
+                  onChange={(ev) =>
+                    handlePropertyValuesChange(
+                      index,
+                      property,
+                      ev.target.value
+                    )
                   }
                   value={property.values}
-                  placeholder="value , comma seperated"
+                  placeholder="value , comma separated"
                   className="mb-0"
                 />
                 <button
@@ -172,13 +248,23 @@ function Categories({ swal }) {
             ))}
         </div>
         <div className="flex gap-1 ">
-          {editedCategory && <button type="button" onClick={() => {setEditedCategory(null); setName(''); setProperties([])}} 
-          className="btn-default" >Cancel</button>}
+          {editedCategory && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditedCategory(null);
+                setName("");
+                setProperties([]);
+              }}
+              className="btn-default"
+            >
+              Cancel
+            </button>
+          )}
           <button type="submit" className="btn-primary py-1">
             Save
           </button>
         </div>
-        
       </form>
       {!editedCategory && (
         <table className="basic mt-2">
@@ -200,7 +286,7 @@ function Categories({ swal }) {
                       className="btn-primary mr-1 flex items-center gap-1"
                       onClick={() => editCategory(category)}
                     >
-                      <TbEdit />
+                      <TiEdit /> {/* Fixed icon import */}
                       Edit
                     </button>
                     <button

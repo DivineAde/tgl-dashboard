@@ -2,6 +2,8 @@ import multiparty from 'multiparty';
 import mime from 'mime-types';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
+import { MongooseConnect } from '@/lib/mongoose';
+import { isAdminRequest } from './auth/[...nextauth]';
 
 const bucketName = 'files';
 
@@ -33,6 +35,7 @@ export default async function handle(req, res) {
     const { data, error } = await supabase.storage.from(bucketName).upload(newFilename, fs.createReadStream(file.path), {
       contentType: mime.lookup(file.path),
       cacheControl: 'public, max-age=31536000', // You can adjust cache control as needed
+      duplex: 'half',
     });
 
     if (error) {
